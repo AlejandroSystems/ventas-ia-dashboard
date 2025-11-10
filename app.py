@@ -1,30 +1,45 @@
 import streamlit as st
 import pandas as pd
 import json
-import glob
 import fsspec
 
 st.set_page_config(page_title="Análisis de Ventas (GCS)", layout="wide")
 st.title("Dashboard de Ventas – XGBoost (lectura desde GCS)")
 
 # --- Config mínima (usa Secrets en la nube) ---
-BUCKET = st.secrets.get("BUCKET", "")
-SA_JSON = st.secrets.get("GCP_SA_JSON", "")
+BUCKET = st.secrets.get("BUCKET", "").strip()
+SA_JSON_RAW = st.secrets.get("GCP_SA_JSON", "")
 
-if not BUCKET or not SA_JSON:
+if not BUCKET or not SA_JSON_RAW:
     st.warning("Faltan Secrets: BUCKET y/o GCP_SA_JSON")
     st.stop()
 
-# Proveedor de archivos con credenciales (gcsfs)
-fs = fsspec.filesystem("gcs", token=json.loads(SA_JSON))
+# Parsear el JSON del service account
+try:
+    SA_INFO = json.loads(SA_JSON_RAW)
+except Exception as e:
+    st.error(f"El Secret GCP_SA_JSON no es un JSON válido: {e}")
+    st.stop()
 
-# Helpers
+# gcsfs vía fsspec usando el JSON en memoria
+fs = fsspec.filesystem("gcs", token=SA_INFO)
+
 def latest_path(prefix: str, pattern: str):
     paths = fs.glob(f"{prefix}{pattern}")
     if not paths:
         return None
-    return sorted(paths)[-1]  # el más reciente por nombre
+    return sorted(paths)[-1]
 
+# ---- Diagnóstico de conexión (opcional, útil al inicio)
+with st.expander("Diagnóstico de conexión (click para ver)"):
+    try:
+        sample = fs.glob(f"{BUCKET}/**")[:5]
+        st.write("Primeros objetos del bucket:", sample if sample else "(vacío o sin coincidencias)")
+    except Exception as e:
+        st.error(f"No pude listar objetos del bucket '{BUCKET}'. Revisa permisos/Secrets. Detalle: {e}")
+        st.stop()
+
+# ---- Resumen del modelo
 st.subheader("Resumen del modelo")
 summary_prefix = f"{BUCKET}/reports/"
 summary = latest_path(summary_prefix, "summary_*.json")
@@ -33,17 +48,16 @@ if summary is None:
 else:
     with fs.open(summary, "r") as f:
         meta = json.load(f)
-    cols = st.columns(3)
-    cols[0].metric("RMSE", f"{meta['best_model_snapshot']['RMSE']:.2f}")
-    cols[1].metric("MAE", f"{meta['best_model_snapshot']['MAE']:.2f}")
-    cols[2].metric("R²", f"{meta['best_model_snapshot']['R2']:.3f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("RMSE", f"{meta['best_model_snapshot']['RMSE']:.2f}")
+    c2.metric("MAE",  f"{meta['best_model_snapshot']['MAE']:.2f}")
+    c3.metric("R²",   f"{meta['best_model_snapshot']['R2']:.3f}")
     st.caption(f"Corte: {meta.get('cutoff_date','?')} • Horizonte: {meta.get('horizon_days','?')} días • Archivo: {summary.split('/')[-1]}")
 
 st.divider()
 st.subheader("Diagnóstico por mes y por familia")
 
-# Cargar reportes de diagnóstico
-month_csv = latest_path(f"{BUCKET}/reports/diagnostics/", "month_report_*.csv")
+month_csv  = latest_path(f"{BUCKET}/reports/diagnostics/", "month_report_*.csv")
 family_csv = latest_path(f"{BUCKET}/reports/diagnostics/", "family_report_*.csv")
 
 c1, c2 = st.columns(2)
@@ -71,8 +85,7 @@ st.subheader("Pronóstico operativo (si existe)")
 forecast_csv = latest_path(f"{BUCKET}/reports/", "forecast_*.csv")
 if forecast_csv:
     with fs.open(forecast_csv, "rb") as f:
-        fc_df = pd.read_csv(f, parse_dates=["date"], infer_datetime_format=True)
-    # Filtros
+        fc_df = pd.read_csv(f, parse_dates=["date"])
     stores = sorted(fc_df["store_nbr"].unique().tolist())
     fams   = sorted(fc_df["family"].unique().tolist())
     s_sel  = st.selectbox("Tienda", stores, index=0)
