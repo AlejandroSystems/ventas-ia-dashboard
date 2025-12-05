@@ -137,7 +137,7 @@ else:
     try:
         meta = read_json(summary)
 
-        # ===== MÉTRICAS DEL MODELO =====
+               # ===== MÉTRICAS DEL MODELO =====
         c1, c2, c3 = st.columns(3)
         best = meta.get("best_model_snapshot", {})
 
@@ -154,6 +154,32 @@ else:
             f"Horizonte: {meta.get('horizon_days','?')} días • "
             f"Archivo: {summary.split('/')[-1]}"
         )
+
+        # ----- Interpretación rápida de las métricas -----
+        if rmse == rmse and mae == mae and r2 == r2:  # chequeo simple de NaN
+            st.markdown(
+                f"""
+                **Interpretación rápida de las métricas**
+
+                - **RMSE ≈ {rmse:,.0f}** unidades: error típico que penaliza más los errores grandes.  
+                - **MAE ≈ {mae:,.0f}** unidades: desvío promedio entre la venta real y la pronosticada
+                  por día y combinación tienda–familia.  
+                - **R² = {r2:.3f}**: el modelo explica aproximadamente el **{r2*100:.1f}%** de la variación
+                  de las ventas.
+                """
+            )
+
+            if r2 >= 0.90:
+                quality = "Excelente (modelo muy explicativo)."
+            elif r2 >= 0.70:
+                quality = "Aceptable (útil, pero con margen de mejora)."
+            else:
+                quality = "Limitado (sirve como referencia, no para decisiones críticas)."
+
+            st.caption(f"Evaluación global del modelo: {quality}")
+        else:
+            st.caption("Métricas incompletas: no es posible generar una interpretación automática.")
+
 
         # ===== CALIDAD DEL DATASET =====
         st.markdown("### Calidad del dataset")
