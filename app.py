@@ -276,37 +276,95 @@ else:
         st.error(f"No pude leer/parsing el summary: {e}")
 
 # ==========================================
-# 5. DIAGNÓSTICO POR MES Y POR FAMILIA
+# 5. MUESTREO Y COBERTURA DEL DATASET
 # ==========================================
 st.divider()
-st.subheader("Diagnóstico por mes y por familia")
+st.subheader("Muestreo y cobertura del dataset")
 
 month_csv  = latest_path(f"{BUCKET}/reports/diagnostics/", "month_report_*.csv")
 family_csv = latest_path(f"{BUCKET}/reports/diagnostics/", "family_report_*.csv")
 
+month_df  = None
+family_df = None
+
+# Cargamos, pero sin matar la app si falla algo
+if month_csv:
+    try:
+        month_df = read_csv(month_csv)
+    except Exception as e:
+        st.error(f"No pude leer month_report: {e}")
+
+if family_csv:
+    try:
+        # start / end vienen como fechas en el CSV de diagnóstico
+        family_df = read_csv(family_csv, parse_dates=["start", "end"])
+    except Exception as e:
+        st.error(f"No pude leer family_report: {e}")
+
 c1, c2 = st.columns(2)
 
+# ------------------------------
+# Columna izquierda: muestreo temporal
+# ------------------------------
 with c1:
-    st.markdown("**Métricas por mes (último run)**")
-    if month_csv:
-        try:
-            month_df = read_csv(month_csv)
-            st.dataframe(month_df, use_container_width=True)
-        except Exception as e:
-            st.error(f"No pude leer month_report: {e}")
-    else:
-        st.info("No se encontró month_report_*.csv")
+    st.markdown("**Resumen de muestreo temporal**")
 
-with c2:
-    st.markdown("**Métricas por familia (último run)**")
-    if family_csv:
-        try:
-            family_df = read_csv(family_csv)
-            st.dataframe(family_df, use_container_width=True)
-        except Exception as e:
-            st.error(f"No pude leer family_report: {e}")
+    if family_df is not None and not family_df.empty:
+        global_start = family_df["start"].min()
+        global_end   = family_df["end"].max()
+
+        # meses aproximados de histórico
+        n_months = (global_end.year - global_start.year) * 12 + (global_end.month - global_start.month) + 1
+
+        st.metric("Meses con historial de ventas", f"{n_months}")
+        st.caption(
+            f"El dataset cubre ventas diarias desde **{global_start.date()}** "
+            f"hasta **{global_end.date()}**, ofreciendo una muestra continua "
+            "para analizar estacionalidad y tendencias."
+        )
     else:
-        st.info("No se encontró family_report_*.csv")
+        st.info("No se encontró información de cobertura temporal (family_report_*.csv).")
+
+    # Calidad del muestreo (nulos en columnas clave)
+    if month_df is not None and not month_df.empty and "n_nulls" in month_df.columns:
+        total_nulls = int(month_df["n_nulls"].sum())
+        st.markdown("**Calidad del muestreo (valores nulos)**")
+        st.write(
+            f"- Valores nulos en columnas clave (fecha y ventas): **{total_nulls}** "
+            "(un valor 0 indica que el historial está completo y sin huecos)."
+        )
+    else:
+        st.info("No se encontró month_report_*.csv para revisar nulos en el historial.")
+
+# ------------------------------
+# Columna derecha: cobertura por serie
+# ------------------------------
+with c2:
+    st.markdown("**Cobertura por tienda–familia**")
+
+    if family_df is not None and not family_df.empty:
+        min_days = int(family_df["days"].min())
+        max_days = int(family_df["days"].max())
+        pct_ge_24m = (family_df["days"] >= 730).mean() * 100  # 24 meses ≈ 730 días
+
+        st.metric(
+            "Series analizadas (tienda × familia)",
+            f"{len(family_df):,}".replace(",", " ")
+        )
+        st.metric(
+            "% de series con ≥ 24 meses de histórico",
+            f"{pct_ge_24m:.0f}%"
+        )
+        st.caption(
+            "Una mayor cantidad de series con histórico largo reduce el riesgo de "
+            "submuestreo y permite entrenar modelos más estables."
+        )
+
+        # Detalle sólo para usuarios curiosos
+        with st.expander("Ver detalle por tienda y familia"):
+            st.dataframe(family_df, use_container_width=True)
+    else:
+        st.info("No se encontró family_report_*.csv para calcular la cobertura por serie.")
 
 # ==========================================
 # 6. PRONÓSTICO OPERATIVO
