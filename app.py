@@ -181,22 +181,47 @@ else:
             st.caption("Métricas incompletas: no es posible generar una interpretación automática.")
 
 
-        # ===== CALIDAD DEL DATASET =====
+               # ===== CALIDAD DEL DATASET =====
         st.markdown("### Calidad del dataset")
 
+        # Valores base
+        rows    = int(meta.get("rows", 0))
+        n_series = int(meta.get("n_series", 0))
+        pct12m  = float(meta.get("pct_series_ge_12m", 0.0))
+
         c4, c5, c6 = st.columns(3)
-        c4.metric("Filas totales", f"{meta.get('rows', 0):,}".replace(",", " "))
-        c5.metric("Series (store+family)", f"{meta.get('n_series', 0):,}".replace(",", " "))
+        c4.metric("Registros totales (filas)", f"{rows:,}".replace(",", " "))
+        c5.metric("Series tienda–familia", f"{n_series:,}".replace(",", " "))
         c6.metric(
-            "% series ≥ 12m",
-            f"{meta.get('pct_series_ge_12m', 0):.1f}%"
+            "Series con ≥ 12 meses de historial",
+            f"{pct12m:.1f}%"
         )
+
+        # Explicación simple para el usuario final
+        st.markdown(
+            f"""
+            **¿Qué significan estos indicadores de calidad?**
+
+            - **Registros totales:** representan todas las filas históricas de ventas que alimentan el modelo.  
+            - **Series tienda–familia:** cada combinación *tienda + familia de producto* se trata como una serie de tiempo independiente.  
+            - **Series con ≥ 12 meses:** el **{pct12m:.1f}%** de las series tienen al menos un año de historial, lo que permite detectar estacionalidad anual con mucha más confianza.
+            """
+        )
+
+        if pct12m >= 90:
+            cov_msg = "Cobertura histórica **excelente**: el dataset es muy sólido para análisis de estacionalidad."
+        elif pct12m >= 70:
+            cov_msg = "Cobertura histórica **aceptable**: se puede trabajar, pero algunas series tendrán menos contexto temporal."
+        else:
+            cov_msg = "Cobertura histórica **limitada**: las predicciones en ciertas series deben interpretarse con cautela."
+
+        st.caption(cov_msg)
 
         c7, c8 = st.columns(2)
 
         # Niveles de cobertura
         with c7:
-            st.markdown("**Niveles de cobertura**")
+            st.markdown("**Niveles de cobertura por serie**")
             levels = meta.get("levels_counts", {})
             if levels:
                 levels_df = (
@@ -211,17 +236,18 @@ else:
 
         # Violaciones de rango / duplicados
         with c8:
-            st.markdown("**Anomalías detectadas**")
+            st.markdown("**Anomalías detectadas en los datos**")
             rv = meta.get("range_violations", {})
             data_issues = {
                 "Ventas negativas": rv.get("sales_negatives", 0),
-                "Onpromo negativo": rv.get("onpromo_negatives", 0),
-                "Duplicados": meta.get("n_duplicates", 0),
+                "Onpromotion negativo": rv.get("onpromo_negatives", 0),
+                "Duplicados (misma fecha y serie)": meta.get("n_duplicates", 0),
             }
             issues_df = pd.DataFrame(
                 [{"tipo": k, "cantidad": v} for k, v in data_issues.items()]
             )
             st.table(issues_df)
+
 
     except Exception as e:
         st.error(f"No pude leer/parsing el summary: {e}")
