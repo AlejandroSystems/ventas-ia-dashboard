@@ -234,7 +234,12 @@ else:
                     .sort_values("N.º de series", ascending=False)
                 )
                 # Agregamos porcentaje para que el usuario dimensione el peso
-                levels_df["% del total"] = (levels_df["N.º de series"] / total_series * 100).round(1)
+                levels_df["% del total"] = (
+    (levels_df["N.º de series"] / total_series * 100)
+    .round(0)
+    .astype(int)
+)
+
 
                 st.table(levels_df)
 
