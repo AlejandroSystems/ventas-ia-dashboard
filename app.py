@@ -219,20 +219,38 @@ else:
 
         c7, c8 = st.columns(2)
 
-        # Niveles de cobertura
+               # Niveles de cobertura
         with c7:
-            st.markdown("**Niveles de cobertura por serie**")
+            st.markdown("**Historial disponible por serie de ventas**")
+
             levels = meta.get("levels_counts", {})
-            if levels:
+            total_series = int(meta.get("n_series", 0))
+
+            if levels and total_series > 0:
                 levels_df = (
                     pd.DataFrame(
-                        [{"nivel": k, "series": v} for k, v in levels.items()]
+                        [{"Categoría de cobertura": k, "N.º de series": v} for k, v in levels.items()]
                     )
-                    .sort_values("series", ascending=False)
+                    .sort_values("N.º de series", ascending=False)
                 )
+                # Agregamos porcentaje para que el usuario dimensione el peso
+                levels_df["% del total"] = (levels_df["N.º de series"] / total_series * 100).round(1)
+
                 st.table(levels_df)
+
+                # Mensaje corto para el usuario final
+                if len(levels_df) == 1 and "óptimo" in str(levels_df["Categoría de cobertura"].iloc[0]).lower():
+                    st.caption(
+                        f"Las {total_series:,} series cuentan con entre 24 y 60 meses de historial, "
+                        "lo que ofrece una base sólida para detectar patrones de estacionalidad y tendencia."
+                    )
+                else:
+                    st.caption(
+                        "Un mayor porcentaje en categorías como **óptimo** o **recomendado** indica "
+                        "mejor calidad histórica para entrenar modelos robustos."
+                    )
             else:
-                st.caption("Sin información de levels_counts.")
+                st.caption("No se encontró información de cobertura histórica por serie.")
 
         # Violaciones de rango / duplicados
         with c8:
