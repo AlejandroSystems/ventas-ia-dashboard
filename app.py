@@ -5,7 +5,7 @@ import streamlit as st
 import fsspec
 
 st.set_page_config(page_title="Análisis de Ventas (GCS)", layout="wide")
-st.title("Dashboard de Ventas – XGBoost (lectura desde GCS)")
+st.title("Dashboard de Ventas – XGBoost (lectura desde GCS) - Grupo 01 / Univesidad Autónoma del Perú")
 
 # ==========================================
 # 1. GESTIÓN DE CREDENCIALES Y CONEXIÓN
