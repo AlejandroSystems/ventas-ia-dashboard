@@ -340,24 +340,32 @@ with c1:
 # Columna derecha: cobertura por serie
 # ------------------------------
 with c2:
-    st.markdown("**Cobertura por tienda–familia**")
+    st.markdown("**Cobertura por tienda / familia**")
 
     if family_df is not None and not family_df.empty:
         min_days = int(family_df["days"].min())
         max_days = int(family_df["days"].max())
         pct_ge_24m = (family_df["days"] >= 730).mean() * 100  # 24 meses ≈ 730 días
+                # Texto explicativo corto antes de las métricas
+        st.markdown(
+            "- **¿Qué es una serie?** Cada serie corresponde a la evolución diaria de "
+            "ventas de **una tienda** para **una familia de productos**.\n"
+            "- **¿Por qué importa?** Cuantas más series y con más años de datos, "
+            "mejor puede el modelo aprender patrones distintos entre tiendas y categorías."
+        )
 
         st.metric(
-            "Series analizadas (tienda × familia)",
+            "Series de venta independientes (tienda × familia)",
             f"{len(family_df):,}".replace(",", " ")
         )
         st.metric(
-            "% de series con ≥ 24 meses de histórico",
+            "Series con historial largo (≥ 24 meses de datos)",
             f"{pct_ge_24m:.0f}%"
         )
         st.caption(
-            "Una mayor cantidad de series con histórico largo reduce el riesgo de "
-            "submuestreo y permite entrenar modelos más estables."
+            "Si este porcentaje está cerca de **100 %**, casi todas las series tienen al "
+            "menos dos años de historial, lo que reduce el riesgo de decisiones basadas "
+            "en muestras cortas y hace al modelo más estable."
         )
 
         # Detalle sólo para usuarios curiosos
