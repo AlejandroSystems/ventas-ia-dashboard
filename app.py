@@ -443,116 +443,119 @@ forecast_csv = latest_path(f"{BUCKET}/reports/", "forecast_*.csv")
 if forecast_csv:
     try:
         fc_df = read_csv(forecast_csv, parse_dates=["date"])
-        stores = sorted(fc_df["store_nbr"].unique().tolist())
-        fams   = sorted(fc_df["family"].unique().tolist())
 
-        s_sel  = st.selectbox("Tienda", stores, index=0)
-        f_sel  = st.selectbox("Familia", fams, index=0)
-
-        sdf = (
-            fc_df[(fc_df["store_nbr"] == s_sel) & (fc_df["family"] == f_sel)]
-            .sort_values("date")
-        )
-
-        if not sdf.empty:
-            # Rango dinámico según los datos disponibles
-            min_date = sdf["date"].min().date()
-            max_date = sdf["date"].max().date()
-
-            st.markdown("**Selecciona el periodo a analizar para esta tienda y familia**")
-            cd1, cd2, cd3 = st.columns([1, 1, 1])
-
-            with cd1:
-                start_date = st.date_input(
-                    "Fecha inicio",
-                    value=min_date,
-                    min_value=min_date,
-                    max_value=max_date,
-                    key=f"start_{s_sel}_{f_sel}",
-                )
-            with cd2:
-                end_date = st.date_input(
-                    "Fecha fin",
-                    value=max_date,
-                    min_value=min_date,
-                    max_value=max_date,
-                    key=f"end_{s_sel}_{f_sel}",
-                )
-            with cd3:
-                aplicar = st.button("Aplicar rango", key=f"apply_{s_sel}_{f_sel}")
-                st.caption("Usa las fechas y presiona *Aplicar rango* para actualizar el análisis.")
-
-            if end_date < start_date:
-                st.warning("La fecha final no puede ser menor que la fecha de inicio.")
-            else:
-                # Filtrar por el rango elegido
-                mask = (
-                    (sdf["date"] >= pd.to_datetime(start_date)) &
-                    (sdf["date"] <= pd.to_datetime(end_date))
-                )
-                sdf_range = sdf.loc[mask].copy()
-
-                if sdf_range.empty:
-                    st.info("No hay datos en el rango seleccionado.")
-                else:
-                    # Gráfico de la serie filtrada
-                    st.line_chart(
-                        sdf_range.set_index("date")[["y_true", "y_pred"]],
-                        use_container_width=True,
-                    )
-                    st.caption(f"Archivo de pronóstico: {forecast_csv.split('/')[-1]}")
-
-                    # KPIs del rango
-                    total_real = float(sdf_range["y_true"].sum())
-                    total_pred = float(sdf_range["y_pred"].sum())
-                    diff = total_pred - total_real
-                    diff_pct = (diff / total_real * 100) if total_real != 0 else np.nan
-
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(
-                        "Ventas reales (rango)",
-                        f"{total_real:,.0f}".replace(",", " ")
-                    )
-                    c2.metric(
-                        "Ventas pronosticadas (rango)",
-                        f"{total_pred:,.0f}".replace(",", " ")
-                    )
-                    c3.metric(
-                        "Diferencia % total",
-                        f"{diff_pct:+.1f}%" if diff_pct == diff_pct else "—"
-                    )
-
-                    # Texto interpretativo dinámico
-                    diff_str = f"{diff:+,.0f}".replace(",", " ")
-                    if diff_pct == diff_pct:
-                        if abs(diff_pct) <= 10:
-                            lectura_error = "margen de error acotado (razonable para decisiones operativas)."
-                        else:
-                            lectura_error = "desviación relevante; conviene revisar promociones, quiebres de stock o eventos atípicos."
-                    else:
-                        lectura_error = "no se pudo calcular el porcentaje de error por falta de datos en el rango."
-
-                    tendencia = "por encima" if diff > 0 else "por debajo" if diff < 0 else "alineado"
-                    st.markdown(
-                        f"""
-                        **Análisis operativo para la tienda {s_sel}, familia {f_sel}**
-
-                        - Periodo analizado: **{start_date} → {end_date}**.  
-                        - El modelo estima **{total_pred:,.0f}** unidades/moneda en este rango.  
-                        - Las ventas reales fueron **{total_real:,.0f}**, por lo que el modelo quedó  
-                          **{diff_str}** unidades (**{diff_pct:+.1f}%**) {tendencia} de lo observado.  
-
-                        En términos simples, este tramo refleja un **{lectura_error}**
-                        para esta combinación tienda–familia y periodo seleccionado.
-                        """
-                    )
+        if fc_df is None or fc_df.empty:
+            st.info("El archivo de forecast está vacío o no contiene datos.")
         else:
-            st.info("No hay datos para esa combinación tienda–familia.")
+            # Opciones base desde el dataset
+            stores = sorted(fc_df["store_nbr"].unique().tolist())
+            fams   = sorted(fc_df["family"].unique().tolist())
+
+            # Agregamos la opción "TODAS"
+            store_options = ["TODAS"] + stores
+            fam_options   = ["TODAS"] + fams
+
+            s_sel = st.selectbox("Tienda", store_options, index=0)
+            f_sel = st.selectbox("Familia", fam_options, index=0)
+
+            # Filtro flexible según selección
+            sdf = fc_df.copy()
+            if s_sel != "TODAS":
+                sdf = sdf[sdf["store_nbr"] == s_sel]
+            if f_sel != "TODAS":
+                sdf = sdf[sdf["family"] == f_sel]
+
+            sdf = sdf.sort_values("date")
+
+            if sdf.empty:
+                st.info("No hay datos para esa combinación de tienda y familia.")
+            else:
+                # Rango dinámico según los datos disponibles
+                min_date = sdf["date"].min().date()
+                max_date = sdf["date"].max().date()
+
+                start_date, end_date = st.date_input(
+                    "Rango de fechas a analizar",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date,
+                )
+
+                if start_date > end_date:
+                    st.error("La fecha de inicio no puede ser mayor que la fecha final.")
+                else:
+                    # Filtrar por el rango elegido
+                    mask = (
+                        (sdf["date"] >= pd.to_datetime(start_date)) &
+                        (sdf["date"] <= pd.to_datetime(end_date))
+                    )
+                    sdf_range = sdf.loc[mask].copy()
+
+                    if sdf_range.empty:
+                        st.info("No hay datos en el rango seleccionado.")
+                    else:
+                        # 🔹 Agregamos por fecha para soportar "TODAS"
+                        daily = (
+                            sdf_range
+                            .groupby("date", as_index=False)[["y_true", "y_pred"]]
+                            .sum()
+                        )
+
+                        # Gráfico línea (real vs pronosticado)
+                        st.line_chart(
+                            daily.set_index("date")[["y_true", "y_pred"]],
+                            use_container_width=True,
+                        )
+                        st.caption(f"Archivo: {forecast_csv.split('/')[-1]}")
+
+                        # KPIs del rango (agregado)
+                        total_real = float(daily["y_true"].sum())
+                        total_pred = float(daily["y_pred"].sum())
+                        diff = total_pred - total_real
+                        diff_pct = (diff / total_real * 100) if total_real != 0 else np.nan
+
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric(
+                            "Ventas reales (rango)",
+                            f"{total_real:,.0f}".replace(",", " ")
+                        )
+                        c2.metric(
+                            "Ventas pronosticadas (rango)",
+                            f"{total_pred:,.0f}".replace(",", " ")
+                        )
+                        c3.metric(
+                            "Diferencia % total",
+                            f"{diff_pct:+.1f}%" if diff_pct == diff_pct else "—"
+                        )
+
+                        # Descripciones dinámicas según selección
+                        if s_sel == "TODAS":
+                            store_desc = "todas las tiendas"
+                        else:
+                            store_desc = f"la tienda {s_sel}"
+
+                        if f_sel == "TODAS":
+                            fam_desc = "todas las familias de producto"
+                        else:
+                            fam_desc = f"la familia {f_sel}"
+
+                        diff_str = f"{diff:+,.0f}".replace(",", " ")
+
+                        st.markdown(
+                            f"""
+                            **Análisis operativo para {store_desc}, {fam_desc}**
+
+                            - Periodo analizado: **{start_date} → {end_date}**  
+                            - El modelo estima **{total_pred:,.0f}** unidades/moneda en este rango.  
+                            - Frente a las ventas reales (**{total_real:,.0f}**), la diferencia acumulada es de  
+                              **{diff_str}** unidades (**{diff_pct:+.1f}%**).
+
+                            En simple: este rango te muestra el **margen de error operativo** del modelo
+                            para esta vista (detalle o consolidado), útil para ajustar compras, stock y promociones.
+                            """
+                        )
 
     except Exception as e:
         st.error(f"No pude leer/mostrar forecast: {e}")
 else:
     st.info("Aún no hay forecast_*.csv en reports/")
-
-st.divider()
-st.caption("Fuente: Google Cloud Storage (solo lectura). Recarga la página si subes nuevos artefactos desde el notebook.")
