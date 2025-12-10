@@ -540,6 +540,48 @@ if forecast_csv:
                             fam_desc = f"la familia {f_sel}"
 
                         diff_str = f"{diff:+,.0f}".replace(",", " ")
+# Clasificación táctica del nivel de error
+if diff_pct == diff_pct:  # chequeo de NaN
+    error_pct = abs(diff_pct)
+
+    if error_pct < 5:
+        level = "MUY BAJO"
+        comment = "el modelo está prácticamente alineado con la realidad para este rango."
+    elif error_pct < 10:
+        level = "BAJO"
+        comment = "el modelo tiene un margen de error acotado, usable para decisiones operativas."
+    elif error_pct < 20:
+        level = "MEDIO"
+        comment = "las predicciones son útiles, pero conviene revisarlas con otros indicadores."
+    elif error_pct < 40:
+        level = "ALTO"
+        comment = "hay desvíos importantes; usa el pronóstico con cautela y respaldo adicional."
+    else:
+        level = "MUY ALTO"
+        comment = "el error es elevado; evita decisiones críticas basadas solo en este modelo."
+
+    if diff_pct > 0:
+        bias = "tiende a **sobreestimar** las ventas (pronostica más de lo que realmente se vende)."
+    elif diff_pct < 0:
+        bias = "tiende a **subestimar** las ventas (pronostica menos de lo que realmente se vende)."
+    else:
+        bias = "no muestra un sesgo sistemático (ni sobre ni subestima en promedio)."
+
+    st.markdown(
+        f"""
+        **Lectura táctica del pronóstico**
+
+        - Error acumulado en el rango: **{diff_pct:+.1f}%**  
+        - Nivel de error: **{level}**  
+        - Interpretación: {comment}  
+        - Sesgo del modelo en este periodo: {bias}
+        """
+    )
+else:
+    st.caption(
+        "No se puede calcular el porcentaje de error porque las ventas reales del rango son 0. "
+        "En estos casos el análisis táctico del modelo no aplica."
+    )
 
                         st.markdown(
                             f"""
