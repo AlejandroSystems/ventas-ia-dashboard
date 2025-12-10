@@ -494,7 +494,7 @@ if forecast_csv:
                     if sdf_range.empty:
                         st.info("No hay datos en el rango seleccionado.")
                     else:
-                        # 🔹 Agregamos por fecha para soportar "TODAS"
+                        # Agregamos por fecha para soportar “TODAS”
                         daily = (
                             sdf_range
                             .groupby("date", as_index=False)[["y_true", "y_pred"]]
@@ -540,50 +540,76 @@ if forecast_csv:
                             fam_desc = f"la familia {f_sel}"
 
                         diff_str = f"{diff:+,.0f}".replace(",", " ")
-# Clasificación táctica del nivel de error
-if diff_pct == diff_pct:  # chequeo de NaN
-    error_pct = abs(diff_pct)
 
-    if error_pct < 5:
-        level = "MUY BAJO"
-        comment = "el modelo está prácticamente alineado con la realidad para este rango."
-    elif error_pct < 10:
-        level = "BAJO"
-        comment = "el modelo tiene un margen de error acotado, usable para decisiones operativas."
-    elif error_pct < 20:
-        level = "MEDIO"
-        comment = "las predicciones son útiles, pero conviene revisarlas con otros indicadores."
-    elif error_pct < 40:
-        level = "ALTO"
-        comment = "hay desvíos importantes; usa el pronóstico con cautela y respaldo adicional."
-    else:
-        level = "MUY ALTO"
-        comment = "el error es elevado; evita decisiones críticas basadas solo en este modelo."
+                        # Resumen operativo en texto
+                        st.markdown(
+                            f"""
+                            **Análisis operativo para {store_desc}, {fam_desc}**
 
-    if diff_pct > 0:
-        bias = "tiende a **sobreestimar** las ventas (pronostica más de lo que realmente se vende)."
-    elif diff_pct < 0:
-        bias = "tiende a **subestimar** las ventas (pronostica menos de lo que realmente se vende)."
-    else:
-        bias = "no muestra un sesgo sistemático (ni sobre ni subestima en promedio)."
+                            - Periodo analizado: **{start_date} → {end_date}**  
+                            - Ventas reales acumuladas: **{total_real:,.0f}**  
+                            - Ventas pronosticadas: **{total_pred:,.0f}**  
+                            - Diferencia acumulada: **{diff_str}** unidades (**{diff_pct:+.1f}%**)
 
-    st.markdown(
-        f"""
-        **Lectura táctica del pronóstico**
+                            Esta vista te muestra, de forma agregada, qué tan alineado está el modelo
+                            con el comportamiento real en el rango seleccionado.
+                            """
+                        )
 
-        - Error acumulado en el rango: **{diff_pct:+.1f}%**  
-        - Nivel de error: **{level}**  
-        - Interpretación: {comment}  
-        - Sesgo del modelo en este periodo: {bias}
-        """
-    )
-else:
-    st.caption(
-        "No se puede calcular el porcentaje de error porque las ventas reales del rango son 0. "
-        "En estos casos el análisis táctico del modelo no aplica."
-    )
+                        # Clasificación táctica del nivel de error
+                        if diff_pct == diff_pct:  # chequeo de NaN
+                            error_pct = abs(diff_pct)
+
+                            if error_pct < 5:
+                                level = "MUY BAJO"
+                                comment = "el modelo está prácticamente alineado con la realidad para este rango."
+                            elif error_pct < 10:
+                                level = "BAJO"
+                                comment = "el modelo tiene un margen de error acotado, usable para decisiones operativas."
+                            elif error_pct < 20:
+                                level = "MEDIO"
+                                comment = "las predicciones son útiles, pero conviene revisarlas con otros indicadores."
+                            elif error_pct < 40:
+                                level = "ALTO"
+                                comment = "hay desvíos importantes; usa el pronóstico con cautela y respaldo adicional."
+                            else:
+                                level = "MUY ALTO"
+                                comment = "el error es elevado; evita decisiones críticas basadas solo en este modelo."
+
+                            if diff_pct > 0:
+                                bias = (
+                                    "tiende a **sobreestimar** las ventas "
+                                    "(pronostica más de lo que realmente se vende)."
+                                )
+                            elif diff_pct < 0:
+                                bias = (
+                                    "tiende a **subestimar** las ventas "
+                                    "(pronostica menos de lo que realmente se vende)."
+                                )
+                            else:
+                                bias = (
+                                    "no muestra un sesgo sistemático "
+                                    "(ni sobre ni subestima en promedio)."
+                                )
+
+                            st.markdown(
+                                f"""
+                                **Lectura táctica del pronóstico**
+
+                                - Error acumulado en el rango: **{diff_pct:+.1f}%**  
+                                - Nivel de error: **{level}**  
+                                - Interpretación: {comment}  
+                                - Sesgo del modelo en este periodo: {bias}
+                                """
+                            )
+                        else:
+                            st.caption(
+                                "No se puede calcular el porcentaje de error porque las ventas reales del rango son 0. "
+                                "En estos casos el análisis táctico del modelo no aplica."
+                            )
 
     except Exception as e:
         st.error(f"No pude leer/mostrar forecast: {e}")
 else:
     st.info("Aún no hay forecast_*.csv en reports/")
+
