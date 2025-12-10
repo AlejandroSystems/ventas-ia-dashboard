@@ -449,67 +449,70 @@ if forecast_csv:
         )
 
         if not sdf.empty:
-            # --- Selector de rango de fechas ---
+            # Rango dinámico según los datos disponibles
             min_date = sdf["date"].min().date()
             max_date = sdf["date"].max().date()
 
             start_date, end_date = st.date_input(
-                "Rango de fechas para análisis operativo",
+                "Rango de fechas a analizar",
                 value=(min_date, max_date),
                 min_value=min_date,
                 max_value=max_date,
             )
 
-            if start_date > end_date:
-                st.error("La fecha inicial no puede ser mayor que la fecha final.")
+            # Filtrar por el rango elegido
+            mask = (
+                (sdf["date"] >= pd.to_datetime(start_date)) &
+                (sdf["date"] <= pd.to_datetime(end_date))
+            )
+            sdf_range = sdf.loc[mask].copy()
+
+            if sdf_range.empty:
+                st.info("No hay datos en el rango seleccionado.")
             else:
-                mask_range = (
-                    (sdf["date"].dt.date >= start_date) &
-                    (sdf["date"].dt.date <= end_date)
+                # Gráfico de la serie filtrada
+                st.line_chart(
+                    sdf_range.set_index("date")[["y_true", "y_pred"]],
+                    use_container_width=True,
                 )
-                sdf_range = sdf.loc[mask_range].copy()
+                st.caption(f"Archivo: {forecast_csv.split('/')[-1]}")
 
-                if sdf_range.empty:
-                    st.info("No hay datos en el rango seleccionado para esa tienda/familia.")
-                else:
-                    # Gráfico sólo del periodo seleccionado
-                    st.line_chart(sdf_range.set_index("date")[["y_true", "y_pred"]])
-                    st.caption(f"Archivo: {forecast_csv.split('/')[-1]}")
+                # KPIs del rango
+                total_real = float(sdf_range["y_true"].sum())
+                total_pred = float(sdf_range["y_pred"].sum())
+                diff = total_pred - total_real
+                diff_pct = (diff / total_real * 100) if total_real != 0 else np.nan
 
-                    # KPIs del rango
-                    total_real = float(sdf_range["y_true"].sum())
-                    total_pred = float(sdf_range["y_pred"].sum())
-                    diff = total_pred - total_real
-                    diff_pct = (diff / total_real * 100) if total_real != 0 else np.nan
+                c1, c2, c3 = st.columns(3)
+                c1.metric(
+                    "Ventas reales (rango)",
+                    f"{total_real:,.0f}".replace(",", " ")
+                )
+                c2.metric(
+                    "Ventas pronosticadas (rango)",
+                    f"{total_pred:,.0f}".replace(",", " ")
+                )
+                c3.metric(
+                    "Diferencia % total",
+                    f"{diff_pct:+.1f}%" if diff_pct == diff_pct else "—"
+                )
 
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(
-                        "Ventas reales (rango)",
-                        f"{total_real:,.0f}".replace(",", " ")
-                    )
-                    c2.metric(
-                        "Ventas pronosticadas (rango)",
-                        f"{total_pred:,.0f}".replace(",", " ")
-                    )
-                    c3.metric(
-                        "Diferencia % total",
-                        f"{diff_pct:+.1f}%" if diff_pct == diff_pct else "—"
-                    )
+                # Texto interpretativo dinámico
+                diff_str = f"{diff:+,.0f}".replace(",", " ")
 
-                    # Texto interpretativo dinámico
-                    st.markdown(
-                        f"""
-                        **Análisis operativo para la tienda {s_sel}, familia {f_sel}**
+                st.markdown(
+                    f"""
+                    **Análisis operativo para la tienda {s_sel}, familia {f_sel}**
 
-                        - Periodo analizado: **{start_date} → {end_date}**  
-                        - El modelo estima **{total_pred:,.0f}** unidades/moneda en este rango.  
-                        - Frente a las ventas reales (**{total_real:,.0f}**), la diferencia acumulada es de  
-                          **{diff:,+.0f}** unidades (**{diff_pct:+.1f}%**).
+                    - Periodo analizado: **{start_date} → {end_date}**  
+                    - El modelo estima **{total_pred:,.0f}** unidades/moneda en este rango.  
+                    - Frente a las ventas reales (**{total_real:,.0f}**), la diferencia acumulada es de  
+                      **{diff_str}** unidades (**{diff_pct:+.1f}%**).
 
-                        Esto te da una referencia del **margen de error esperado** para esta combinación
-                        tienda–familia y periodo, útil para planificar stock, compras y promociones.
-                        """
-                    )
+                    Esto te muestra, en términos simples, el **margen de error esperado**
+                    para esta combinación tienda–familia y periodo concreto.
+                    """
+                )
         else:
             st.info("No hay datos para esa combinación tienda–familia.")
 
@@ -517,6 +520,3 @@ if forecast_csv:
         st.error(f"No pude leer/mostrar forecast: {e}")
 else:
     st.info("Aún no hay forecast_*.csv en reports/")
-
-st.divider()
-st.caption("Fuente: GCS (solo lectura). Recarga la página si subes nuevos artefactos.")
