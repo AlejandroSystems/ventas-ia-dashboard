@@ -583,20 +583,6 @@ else:
         "En estos casos el análisis táctico del modelo no aplica."
     )
 
-                        st.markdown(
-                            f"""
-                            **Análisis operativo para {store_desc}, {fam_desc}**
-
-                            - Periodo analizado: **{start_date} → {end_date}**  
-                            - El modelo estima **{total_pred:,.0f}** unidades en este rango.  
-                            - Frente a las ventas reales (**{total_real:,.0f}**), la diferencia acumulada es de  
-                              **{diff_str}** unidades (**{diff_pct:+.1f}%**).
-
-                            En simple: este rango te muestra el **margen de error operativo** del modelo
-                            para esta vista (detalle o consolidado), útil para ajustar compras, stock y promociones.
-                            """
-                        )
-
     except Exception as e:
         st.error(f"No pude leer/mostrar forecast: {e}")
 else:
