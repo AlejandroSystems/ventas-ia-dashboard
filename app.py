@@ -128,7 +128,6 @@ st.divider()
 st.subheader("Resumen del modelo")
 
 summary_prefix = f"{BUCKET}/reports/"
-# Buscamos summary_*.json (p.ej. summary_20251110.json)
 summary = latest_path(summary_prefix, "summary_*.json")
 
 if summary is None:
@@ -136,20 +135,41 @@ if summary is None:
 else:
     try:
         meta = read_json(summary)
+    except Exception as e:
+        st.error(f"No pude leer/parsing el summary: {e}")
+    else:
+        # ===== MÉTRICAS DEL MODELO =====
+        st.markdown("### Métricas del modelo principal")
 
-               # ===== MÉTRICAS DEL MODELO =====
+        metrics = meta.get("metrics", {}) or {}
+        candidates = metrics.get("candidates", {}) or {}
+
+        best_name_cfg = meta.get("best_model_name")
+        best_name = None
+        best_metrics = None
+
+        if candidates:
+            if isinstance(best_name_cfg, str) and best_name_cfg in candidates:
+                best_name = best_name_cfg
+                best_metrics = candidates[best_name]
+            else:
+                # Elegir el de menor RMSE si no está definido explícitamente
+                best_name, best_metrics = sorted(
+                    candidates.items(),
+                    key=lambda kv: kv[1].get("RMSE", float("inf"))
+                )[0]
+
+        rmse = best_metrics.get("RMSE", float("nan")) if best_metrics else float("nan")
+        mae  = best_metrics.get("MAE", float("nan")) if best_metrics else float("nan")
+        r2   = best_metrics.get("R2", float("nan")) if best_metrics else float("nan")
+
         c1, c2, c3 = st.columns(3)
-        best = meta.get("best_model_snapshot", {})
-
-        rmse = best.get("RMSE", float("nan"))
-        mae  = best.get("MAE", float("nan"))
-        r2   = best.get("R2", float("nan"))
-
         c1.metric("RMSE", f"{rmse:.2f}" if rmse == rmse else "—")
         c2.metric("MAE",  f"{mae:.2f}" if mae == mae else "—")
         c3.metric("R²",   f"{r2:.3f}" if r2 == r2 else "—")
 
         st.caption(
+            f"Modelo elegido: {best_name or 'desconocido'} • "
             f"Corte: {meta.get('cutoff_date','?')} • "
             f"Horizonte: {meta.get('horizon_days','?')} días • "
             f"Archivo: {summary.split('/')[-1]}"
@@ -180,14 +200,15 @@ else:
         else:
             st.caption("Métricas incompletas: no es posible generar una interpretación automática.")
 
-
-               # ===== CALIDAD DEL DATASET =====
+        # ===== CALIDAD DEL DATASET =====
         st.markdown("### Calidad del dataset")
 
-        # Valores base
-        rows    = int(meta.get("rows", 0))
-        n_series = int(meta.get("n_series", 0))
-        pct12m  = float(meta.get("pct_series_ge_12m", 0.0))
+        # Data quality anidada en master_summary["data_quality"]
+        dq = meta.get("data_quality") or meta
+
+        rows     = int(dq.get("rows", 0))
+        n_series = int(dq.get("n_series", 0))
+        pct12m   = float(dq.get("pct_series_ge_12m", 0.0))
 
         c4, c5, c6 = st.columns(3)
         c4.metric("Registros totales (filas)", f"{rows:,}".replace(",", " "))
@@ -197,7 +218,6 @@ else:
             f"{pct12m:.1f}%"
         )
 
-        # Explicación simple para el usuario final
         st.markdown(
             f"""
             **¿Qué significan estos indicadores de calidad?**
@@ -219,12 +239,12 @@ else:
 
         c7, c8 = st.columns(2)
 
-               # Niveles de cobertura
+        # Niveles de cobertura
         with c7:
             st.markdown("**Historial disponible por serie de ventas**")
 
-            levels = meta.get("levels_counts", {})
-            total_series = int(meta.get("n_series", 0))
+            levels = dq.get("levels_counts", {}) or {}
+            total_series = int(dq.get("n_series", 0))
 
             if levels and total_series > 0:
                 levels_df = (
@@ -233,17 +253,15 @@ else:
                     )
                     .sort_values("N.º de series", ascending=False)
                 )
-                # Agregamos porcentaje para que el usuario dimensione el peso
+                # Agregamos porcentaje
                 levels_df["% del total"] = (
-    (levels_df["N.º de series"] / total_series * 100)
-    .round(0)
-    .astype(int)
-)
-
+                    (levels_df["N.º de series"] / total_series * 100)
+                    .round(0)
+                    .astype(int)
+                )
 
                 st.table(levels_df)
 
-                # Mensaje corto para el usuario final
                 if len(levels_df) == 1 and "óptimo" in str(levels_df["Categoría de cobertura"].iloc[0]).lower():
                     st.caption(
                         f"Las {total_series:,} series cuentan con entre 24 y 60 meses de historial, "
@@ -260,23 +278,57 @@ else:
         # Violaciones de rango / duplicados
         with c8:
             st.markdown("**Anomalías detectadas en los datos**")
-            rv = meta.get("range_violations", {})
+            rv = dq.get("range_violations", {}) or {}
             data_issues = {
                 "Ventas negativas": rv.get("sales_negatives", 0),
                 "Onpromotion negativo": rv.get("onpromo_negatives", 0),
-                "Duplicados (misma fecha y serie)": meta.get("n_duplicates", 0),
+                "Duplicados (misma fecha y serie)": dq.get("n_duplicates", 0),
             }
             issues_df = pd.DataFrame(
                 [{"tipo": k, "cantidad": v} for k, v in data_issues.items()]
             )
             st.table(issues_df)
 
+# ==========================================
+# 5. COMPARACIÓN DE MODELOS (IA)
+# ==========================================
+st.divider()
+st.subheader("Comparación de modelos (IA)")
 
-    except Exception as e:
-        st.error(f"No pude leer/parsing el summary: {e}")
+metrics_path = f"{BUCKET}/reports/cv_results.csv"
+
+try:
+    metrics_df = read_csv(metrics_path)
+    if metrics_df is None or metrics_df.empty:
+        raise ValueError("cv_results.csv vacío")
+    # Ordenamos por RMSE (menor es mejor)
+    metrics_df_sorted = metrics_df.sort_values("RMSE", ascending=True).reset_index(drop=True)
+
+    st.markdown("**Tabla comparativa de modelos (ordenada por RMSE):**")
+    st.dataframe(metrics_df_sorted, use_container_width=True)
+
+    best_row = metrics_df_sorted.iloc[0]
+    best_name = best_row["model"]
+    best_rmse = best_row["RMSE"]
+    best_mae  = best_row["MAE"]
+    best_r2   = best_row.get("R2", float("nan"))
+
+    st.markdown(
+        f"""
+        **Mejor modelo actual:** `{best_name}`  
+        - RMSE: **{best_rmse:,.2f}**  
+        - MAE: **{best_mae:,.2f}**  
+        - R²: **{best_r2:.3f}**
+        """
+    )
+except Exception:
+    st.info(
+        "Aún no se encontró `cv_results.csv` en la carpeta `reports/`. "
+        "Ejecuta el Bloque 5 del notebook para generar las métricas de modelos."
+    )
 
 # ==========================================
-# 5. MUESTREO Y COBERTURA DEL DATASET
+# 6. MUESTREO Y COBERTURA DEL DATASET
 # ==========================================
 st.divider()
 st.subheader("Muestreo y cobertura del dataset")
@@ -346,7 +398,7 @@ with c2:
         min_days = int(family_df["days"].min())
         max_days = int(family_df["days"].max())
         pct_ge_24m = (family_df["days"] >= 730).mean() * 100  # 24 meses ≈ 730 días
-                # Texto explicativo corto antes de las métricas
+
         st.markdown(
             "- **¿Qué es una serie?** Cada serie corresponde a la evolución diaria de "
             "ventas de **una tienda** para **una familia de productos**.\n"
@@ -368,19 +420,17 @@ with c2:
             "en muestras cortas y hace al modelo más estable."
         )
 
-        # Detalle sólo para usuarios curiosos
         with st.expander("Ver detalle por tienda y familia"):
             st.dataframe(family_df, use_container_width=True)
     else:
         st.info("No se encontró family_report_*.csv para calcular la cobertura por serie.")
 
 # ==========================================
-# 6. PRONÓSTICO OPERATIVO
+# 7. PRONÓSTICO OPERATIVO
 # ==========================================
 st.divider()
 st.subheader("Pronóstico operativo (si existe)")
 
-# Aquí trabajamos con CSV: forecast_*.csv
 forecast_csv = latest_path(f"{BUCKET}/reports/", "forecast_*.csv")
 
 if forecast_csv:
