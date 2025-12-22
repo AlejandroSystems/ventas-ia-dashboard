@@ -436,7 +436,7 @@ with c2:
 # 7. PRONÓSTICO OPERATIVO
 # ==========================================
 st.divider()
-st.subheader("Pronóstico operativo (si existe)")
+st.subheader("Pronóstico operativo ---")
 
 forecast_csv = latest_path(f"{BUCKET}/reports/", "forecast_*.csv")
 
