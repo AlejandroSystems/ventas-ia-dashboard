@@ -578,12 +578,12 @@ if forecast_csv:
 
                             if diff_pct > 0:
                                 bias = (
-                                    "tiende a **sobreestimar** las ventas "
+                                    "tendencia a **sobreestimar** las ventas "
                                     "(pronostica más de lo que realmente se vende)."
                                 )
                             elif diff_pct < 0:
                                 bias = (
-                                    "tiende a **subestimar** las ventas "
+                                    "tedencia a **subestimar** las ventas "
                                     "(pronostica menos de lo que realmente se vende)."
                                 )
                             else:
@@ -594,7 +594,7 @@ if forecast_csv:
 
                             st.markdown(
                                 f"""
-                                **Lectura táctica del pronóstico**
+                                **Lectura resumida con enfoque táctico del pronóstico**
 
                                 - Error acumulado en el rango: **{diff_pct:+.1f}%**  
                                 - Nivel de error: **{level}**  
